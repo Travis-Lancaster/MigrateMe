@@ -11,9 +11,9 @@
 
 import { AllSamplesGrid } from "../sections/grids/AllSamplesGrid";
 import React from "react";
-// import { DispatchForm } from "../sections/forms/DispatchForm";
+import { DispatchForm } from "../sections/forms/DispatchForm";
 // import { GenericGridDrawer } from "../drawers/GenericGridDrawer";
-// import { LabResultsImporter } from "../sections/forms/LabResultsImporter";
+import { LabResultsImporter } from "../sections/forms/LabResultsImporter";
 import { SectionFooter } from "../components/SectionFooter";
 import { SectionKey } from "../types/data-contracts";
 import { useDrillHoleDataStore } from "../store";
@@ -21,9 +21,6 @@ import { useSectionActions } from "../hooks";
 
 export const SamplingView: React.FC = () => {
 	const activeLens = useDrillHoleDataStore(state => state.activeLens["Sampling"]);
-	const isDrawerOpen = useDrillHoleDataStore(state => state.isDrawerOpen);
-	const selectedRow = useDrillHoleDataStore(state => state.selectedRow);
-	const closeDrawer = useDrillHoleDataStore(state => state.closeDrawer);
 
 	const currentLens = activeLens || "Sample";
 
@@ -39,7 +36,6 @@ export const SamplingView: React.FC = () => {
 		currentLens,
 		sectionKey: currentSectionKey,
 		isDirty: section?.isDirty,
-		drawerOpen: isDrawerOpen,
 	});
 
 	// ========================================================================
@@ -56,10 +52,10 @@ export const SamplingView: React.FC = () => {
 		switch (currentLens) {
 			case "Sample":
 				return <AllSamplesGrid />;
-			// case "Dispatch":
-			// 	return <DispatchForm />;
-			// case "LabResults":
-			// 	return <LabResultsImporter />;
+			case "Dispatch":
+				return <DispatchForm />;
+			case "LabResults":
+				return <LabResultsImporter />;
 			default:
 				return <AllSamplesGrid />;
 		}
