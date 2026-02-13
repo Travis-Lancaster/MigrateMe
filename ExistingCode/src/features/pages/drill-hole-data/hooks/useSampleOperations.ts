@@ -30,12 +30,17 @@ export function useSampleOperations() {
 	// ========================================================================
 
 	const section = useDrillHoleDataStore(state => state.sections.allSamples);
+	const dispatchSection = useDrillHoleDataStore(state => state.sections.dispatch);
+	const drillPlanId = useDrillHoleDataStore(state => state.drillPlanId || "");
+	const vwCollar = useDrillHoleDataStore(state => state.vwCollar);
 	const addRow = useDrillHoleDataStore(state => state.addRow);
 	const updateRow = useDrillHoleDataStore(state => state.updateRow);
 	const deleteRow = useDrillHoleDataStore(state => state.deleteRow);
+	const updateSectionData = useDrillHoleDataStore(state => state.updateSectionData);
 	const saveSection = useDrillHoleDataStore(state => state.saveSection);
 	const canEdit = useDrillHoleDataStore(state => state.canEdit(SectionKey.AllSamples));
 	const openDrawer = useDrillHoleDataStore(state => state.openDrawer);
+	const setActiveLens = useDrillHoleDataStore(state => state.setActiveLens);
 
 	// ========================================================================
 	// Grid Data
@@ -61,9 +66,7 @@ export function useSampleOperations() {
 	// ========================================================================
 
 	/**
-	 * Add new sample
-	 * 
-	 * TODO: Open modal dialog for sample creation with full workflow
+	 * Add new sample using existing row operation pipeline.
 	 */
 	const handleAddSample = useCallback(() => {
 		console.log(`[useSampleOperations] ➕ Adding new sample`);
@@ -73,10 +76,28 @@ export function useSampleOperations() {
 			return;
 		}
 
-		// TODO: Open sample creation modal
-		// For now, show placeholder message
-		message.info("Sample creation modal - to be implemented");
-	}, [canEdit]);
+
+		const nextDepthFrom = samples.length > 0
+			? Math.max(...samples.map((s: any) => Number(s?.DepthTo || s?.DepthFrom || 0)))
+			: 0;
+		const nextDepthTo = Number((nextDepthFrom + 1).toFixed(2));
+
+		const sampleId = crypto.randomUUID();
+		const row = {
+			SampleId: sampleId,
+			CollarId: drillPlanId,
+			Organization: (vwCollar as any)?.Organization || "",
+			SampleNm: `SMP-${String(samples.length + 1).padStart(4, "0")}`,
+			DepthFrom: nextDepthFrom,
+			DepthTo: nextDepthTo,
+			RowStatus: 0,
+			ActiveInd: true,
+			rv: "",
+		};
+
+		addRow(SectionKey.AllSamples, row);
+		message.success("Sample row added");
+	}, [canEdit, samples, drillPlanId, vwCollar, addRow]);
 
 	/**
 	 * Handle cell value changed
@@ -136,9 +157,7 @@ export function useSampleOperations() {
 	}, [openDrawer]);
 
 	/**
-	 * Dispatch samples to lab
-	 * 
-	 * TODO: Implement dispatch workflow
+	 * Dispatch samples to lab via existing dispatch section in the same store.
 	 */
 	const handleDispatchSamples = useCallback((sampleIds: string[]) => {
 		console.log(`[useSampleOperations] 📤 Dispatching samples:`, sampleIds);
@@ -148,9 +167,54 @@ export function useSampleOperations() {
 			return;
 		}
 
-		// TODO: Open dispatch modal
-		message.info(`Dispatch ${sampleIds.length} sample(s) - to be implemented`);
-	}, [canEdit]);
+
+		if (sampleIds.length === 0) {
+			message.warning("Select at least one sample to dispatch");
+			return;
+		}
+
+		const selectedSamples = samples.filter(sample => sampleIds.includes(sample.SampleId));
+		const totalWeight = selectedSamples.reduce((sum, sample: any) => sum + Number(sample?.SampleWeight || 0), 0);
+
+		const nowIso = new Date().toISOString();
+		const existingDispatch = (dispatchSection?.data || {}) as Record<string, any>;
+		const dispatchId = existingDispatch.LabDispatchId || crypto.randomUUID();
+
+		updateSectionData(SectionKey.Dispatch, {
+			...existingDispatch,
+			LabDispatchId: dispatchId,
+			CollarId: drillPlanId,
+			HoleNm: existingDispatch.HoleNm || (vwCollar as any)?.HoleNm || "",
+			Organization: existingDispatch.Organization || (vwCollar as any)?.Organization || "",
+			DispatchNumber: existingDispatch.DispatchNumber || `DSP-${Date.now()}`,
+			DispatchedDt: existingDispatch.DispatchedDt || nowIso,
+			DispatchStatus: existingDispatch.DispatchStatus || "Draft",
+			LabCode: existingDispatch.LabCode || "TBD",
+			SubmittedBy: existingDispatch.SubmittedBy || "system",
+			AuthorizedByName: existingDispatch.AuthorizedByName || "system",
+			CertificateInd: Boolean(existingDispatch.CertificateInd),
+			EmailNotificationInd: Boolean(existingDispatch.EmailNotificationInd),
+			WebNotificationInd: Boolean(existingDispatch.WebNotificationInd),
+			PulpDiscardAfter90Days: Boolean(existingDispatch.PulpDiscardAfter90Days),
+			PulpPaidStorageAfter90Days: Boolean(existingDispatch.PulpPaidStorageAfter90Days),
+			PulpReturnAfter90Days: Boolean(existingDispatch.PulpReturnAfter90Days),
+			PulpReturnInd: Boolean(existingDispatch.PulpReturnInd),
+			RejectDiscardAfter90Days: Boolean(existingDispatch.RejectDiscardAfter90Days),
+			RejectPaidStorageAfter90Days: Boolean(existingDispatch.RejectPaidStorageAfter90Days),
+			RejectReturnAfter90Days: Boolean(existingDispatch.RejectReturnAfter90Days),
+			RejectReturnInd: Boolean(existingDispatch.RejectReturnInd),
+			SampleTypeDrillCore: existingDispatch.SampleTypeDrillCore ?? true,
+			SampleTypePercussion: Boolean(existingDispatch.SampleTypePercussion),
+			SampleTypeRock: Boolean(existingDispatch.SampleTypeRock),
+			SampleTypeSediment: Boolean(existingDispatch.SampleTypeSediment),
+			SampleTypeSoil: Boolean(existingDispatch.SampleTypeSoil),
+			TotalSampleCount: sampleIds.length,
+			TotalWeight: Number(totalWeight.toFixed(3)),
+			SpecialInstructions: existingDispatch.SpecialInstructions || `Prepared from ${sampleIds.length} sample(s)`,
+		});
+
+		message.success(`Prepared dispatch data for ${sampleIds.length} sample(s)`);
+	}, [canEdit, samples, dispatchSection?.data, updateSectionData, drillPlanId, vwCollar]);
 
 	/**
 	 * Import lab results
@@ -159,10 +223,9 @@ export function useSampleOperations() {
 	 */
 	const handleImportLabResults = useCallback(() => {
 		console.log(`[useSampleOperations] 📥 Importing lab results`);
-
-		// TODO: Implement lab results import
-		message.info("Lab results import - to be implemented");
-	}, []);
+		setActiveLens("Sampling", "LabResults");
+		message.info("Switched to Lab Results importer");
+	}, [setActiveLens]);
 
 	/**
 	 * Save all changes

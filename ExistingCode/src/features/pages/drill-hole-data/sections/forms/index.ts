@@ -8,4 +8,6 @@
 
 // export { RigSetupForm } from "./rig-setup-form/RigSetupForm";
 export { CollarCoordinateForm } from "./CollarCoordinateForm";
-// export { DispatchForm } from "./DispatchForm";
+export { DispatchForm } from "./DispatchForm";
+
+export { LabResultsImporter } from "./LabResultsImporter";
