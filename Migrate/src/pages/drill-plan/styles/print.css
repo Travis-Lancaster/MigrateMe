@@ -1,0 +1,208 @@
+/**
+ * Print Styles for Drill Plan
+ *
+ * Optimized styles for printing drill plan details
+ */
+
+@media print {
+  /* Hide non-essential elements */
+  .no-print,
+  button,
+  .ant-btn,
+  .ant-dropdown,
+  [role="button"],
+  .bulk-actions-bar {
+    display: none !important;
+  }
+
+  /* Page setup */
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  body {
+    font-size: 12pt;
+    line-height: 1.5;
+    color: #000;
+    background: #fff;
+  }
+
+  /* Header */
+  h1 {
+    font-size: 18pt;
+    margin-bottom: 10mm;
+    border-bottom: 2px solid #000;
+    padding-bottom: 3mm;
+  }
+
+  h2 {
+    font-size: 14pt;
+    margin-top: 5mm;
+    margin-bottom: 3mm;
+  }
+
+  /* Cards */
+  .ant-card {
+    border: 1px solid #ccc;
+    page-break-inside: avoid;
+    margin-bottom: 5mm;
+    box-shadow: none;
+  }
+
+  .ant-card-head {
+    background: #f0f0f0;
+    border-bottom: 1px solid #ccc;
+    padding: 3mm;
+  }
+
+  .ant-card-body {
+    padding: 3mm;
+  }
+
+  /* Descriptions */
+  .ant-descriptions-item-label {
+    font-weight: bold;
+    color: #000;
+  }
+
+  .ant-descriptions-item-content {
+    color: #333;
+  }
+
+  /* Status chip */
+  .ant-tag {
+    border: 1px solid #000;
+    background: #fff !important;
+    color: #000 !important;
+    padding: 2mm 3mm;
+  }
+
+  /* Timeline */
+  .ant-timeline {
+    color: #000;
+  }
+
+  .ant-timeline-item-tail {
+    border-left-color: #000;
+  }
+
+  .ant-timeline-item-head {
+    border-color: #000;
+    background: #fff;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  th,
+  td {
+    border: 1px solid #ccc;
+    padding: 2mm;
+    text-align: left;
+  }
+
+  th {
+    background: #f0f0f0;
+    font-weight: bold;
+  }
+
+  /* Spacing */
+  .ant-space {
+    gap: 2mm !important;
+  }
+
+  /* Remove shadows and rounded corners */
+  * {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Print footer */
+  .print-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 3mm;
+    border-top: 1px solid #ccc;
+    font-size: 10pt;
+    text-align: center;
+  }
+
+  /* Page breaks */
+  .page-break {
+    page-break-after: always;
+  }
+
+  .page-break-before {
+    page-break-before: always;
+  }
+
+  .no-page-break {
+    page-break-inside: avoid;
+  }
+
+  /* Links */
+  a {
+    color: #000;
+    text-decoration: none;
+  }
+
+  a[href]:after {
+    content: "";
+  }
+
+  /* Ensure proper spacing */
+  .ant-descriptions-row {
+    page-break-inside: avoid;
+  }
+}
+
+/* Print-specific classes */
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block;
+  }
+
+  .print-header {
+    text-align: center;
+    margin-bottom: 10mm;
+  }
+
+  .print-logo {
+    max-height: 20mm;
+    margin-bottom: 3mm;
+  }
+
+  .print-company-name {
+    font-size: 16pt;
+    font-weight: bold;
+    margin-bottom: 2mm;
+  }
+
+  .print-document-title {
+    font-size: 14pt;
+    color: #666;
+  }
+
+  .print-metadata {
+    font-size: 10pt;
+    color: #666;
+    margin-top: 2mm;
+    text-align: right;
+  }
+}

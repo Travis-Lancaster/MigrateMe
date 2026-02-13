@@ -1,0 +1,173 @@
+/**
+ * Drill Plan Types with Dual Naming System
+ *
+ * Handles the dual naming convention:
+ * - PlannedHoleNm: Assigned during planning phase
+ * - HoleId: Actual identifier assigned when drilling starts
+ */
+
+export type HoleStatusCode =
+	| 'Draft'        // Being created by Planning role
+	| 'Planned'      // Ready for field work, available to Geologists
+	| 'In progress'  // Geologist has activated and is working on it
+	| 'Completed'    // Drilling and logging complete
+	| 'Abandoned'    // Hole was abandoned
+	| 'Cancelled'    // Plan was cancelled
+	| 'Suspended'    // Temporarily paused
+	| 'Stopped'      // Stopped permanently
+	| 'Inaccessible';// Cannot access location
+
+/**
+ * Base DrillPlan interface - data from planning phase
+ */
+export interface DrillPlanBase {
+	DrillPlanId: string;
+	DrillProgramId: string;
+
+	// PLANNING IDENTIFIERS
+	PlannedHoleNm: string;        // Primary planned identifier (e.g., "DH-2026-001")
+	ProposedHoleNm?: string;      // Alternative/proposed name
+	PlannedRL: number;
+	// Coordinates and geometry
+	PlannedEasting: number;
+	PlannedNorthing: number;
+	PlannedElevation: number;
+	PlannedTotalDepth: number;
+	PlannedDip: number;
+	PlannedAzimuth: number;
+	DrillPattern: string;
+	// Status and workflow
+	HoleStatus: HoleStatusCode;
+	PlannedStartDt?: string;
+	PlannedBy?: string;
+
+	// Metadata
+	Organization: string;
+	Project?: string;
+	Target?: string;
+	Comments?: string;
+
+	// Audit fields
+	CreatedOnDt: string;
+	CreatedBy: string;
+	ModifiedOnDt: string;
+	ModifiedBy: string;
+	rv: string;
+}
+
+/**
+ * Extended DrillPlan with Collar data (execution phase)
+ * Includes actual hole identifiers and progress tracking
+ */
+export interface DrillPlanWithCollar extends DrillPlanBase {
+	// EXECUTION IDENTIFIERS (populated when collar is created)
+	CollarId?: string;            // FK to actual collar record
+	HoleId?: string;              // ACTUAL hole identifier assigned during drilling
+	HoleNm?: string;              // Alternative actual name
+
+	// Progress tracking (from Collar)
+	TotalDepth?: number;        // Current drilling depth
+	TotalDepth?: number;          // Actual total depth achieved
+	CollarStatus?: 'Draft' | 'Complete' | 'Reviewed' | 'Approved';
+
+	// Section completion tracking
+	setupComplete?: boolean;
+	geologyComplete?: boolean;
+	geotechComplete?: boolean;
+	samplingComplete?: boolean;
+	qaqcComplete?: boolean;
+}
+
+/**
+ * Get the primary display name for a drill plan
+ * Shows actual HoleId if it exists, otherwise shows planned name
+ */
+export function getDrillPlanDisplayName(plan: Partial<DrillPlanWithCollar>): string {
+	return plan.HoleId || plan.PlannedHoleNm || 'Unnamed';
+}
+
+/**
+ * Get the secondary reference name
+ * Shows planned name as secondary if actual HoleId exists
+ */
+export function getDrillPlanSecondaryName(plan: Partial<DrillPlanWithCollar>): string | undefined {
+	// Show planned name as secondary if actual HoleId exists and is different
+	if (plan.HoleId && plan.HoleId !== plan.PlannedHoleNm) {
+		return plan.PlannedHoleNm;
+	}
+	// Show proposed name if different from planned
+	if (plan.ProposedHoleNm && plan.ProposedHoleNm !== plan.PlannedHoleNm) {
+		return plan.ProposedHoleNm;
+	}
+	return undefined;
+}
+
+/**
+ * Status Transition History
+ */
+export interface StatusTransition {
+	HoleStatusHistoryId: string;
+	DrillPlanId: string;
+	FromStatus: HoleStatusCode;
+	ToStatus: HoleStatusCode;
+	TransitionOnDt: string;
+	TransitionBy: string;
+	Reason?: string;
+	Comments?: string;
+	ExpectedResumeOnDt?: string;
+}
+
+export interface StatusTransitionMetadata {
+	userRole: string;
+	reason?: string;
+	comments?: string;
+	ExpectedResumeOnDt?: Date;
+}
+
+/**
+ * Readiness Check for transitioning to Planned status
+ */
+export interface ReadinessCheck {
+	field: string;
+	label: string;
+	required: boolean;
+	passed: boolean;
+}
+
+export interface ReadinessCheckResult {
+	ready: boolean;
+	checks: ReadinessCheck[];
+}
+
+/**
+ * Filter types for drill plan lists
+ */
+export type DrillPlanFilterType =
+	| 'all'
+	| 'draft'
+	| 'planned'
+	| 'inprogress'
+	| 'completed'
+	| 'exceptions';
+
+export interface DrillPlanFilters {
+	status?: HoleStatusCode | HoleStatusCode[];
+	project?: string;
+	organization?: string;
+	target?: string;
+	createdBy?: string;
+	assignedTo?: string;
+	dateFrom?: Date;
+	dateTo?: Date;
+}
+
+/**
+ * Action result
+ */
+export interface ActionResult {
+	success: boolean;
+	message?: string;
+	error?: string;
+}
+
+console.log('[CONFIG] Drill plan types with dual naming loaded');

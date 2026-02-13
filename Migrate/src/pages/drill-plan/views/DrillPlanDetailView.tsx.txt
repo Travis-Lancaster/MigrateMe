@@ -1,0 +1,321 @@
+/**
+ * DrillPlanDetailView Component
+ *
+ * Detailed view of a single drill plan with actions and history
+ */
+
+import '../styles/print.css';
+
+import {
+  Alert,
+  Button,
+  Card,
+  Descriptions,
+  Divider,
+  Dropdown,
+  Menu,
+  Modal,
+  Space,
+  Spin,
+  message,
+} from 'antd';
+import {
+  ArrowLeftOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  FilePdfOutlined,
+  MoreOutlined,
+  PrinterOutlined,
+  SwapOutlined,
+} from '@ant-design/icons';
+import React, { useEffect, useState } from 'react';
+import { StatusChip, StatusHistoryTimeline, StatusTransitionModal } from '../components';
+import { exportToPDF, printDrillPlan } from '../utils/exportUtils';
+import { useNavigate, useParams } from 'react-router';
+
+import type { DrillPlanStatusEnum } from '../types';
+import type { MenuProps } from 'antd';
+import { statusTransitionService } from '../services/statusTransitionService';
+import { useDrillPlanDetail } from '../hooks/useDrillPlanDetail';
+import { usePermissions } from '../hooks/usePermissions';
+import { useStatusTransition } from '../hooks/useStatusTransition';
+
+export const DrillPlanDetailView: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { plan, isLoading, error, refresh } = useDrillPlanDetail(id!);
+  const { canUpdate, canDelete, getAvailableTransitions } = usePermissions();
+  const {
+    statusTransitionModal,
+    openStatusTransitionModal,
+    closeStatusTransitionModal,
+  } = useStatusTransition();
+
+  const [statusHistory, setStatusHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    if (id) {
+      loadStatusHistory();
+    }
+  }, [id]);
+
+  const loadStatusHistory = async () => {
+    if (!id) return;
+
+    setLoadingHistory(true);
+    try {
+      const history = await statusTransitionService.getStatusHistory(id);
+      setStatusHistory(history);
+    } catch (err) {
+      console.error('Failed to load status history:', err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleDelete = () => {
+    if (!plan) return;
+
+    Modal.confirm({
+      title: 'Delete Drill Plan',
+      content: `Are you sure you want to delete this drill plan? This action cannot be undone.`,
+      okText: 'Delete',
+      okType: 'danger',
+      onOk: async () => {
+        try {
+          // Delete logic would go here
+          message.success('Drill plan deleted successfully');
+          navigate('/drill-plan');
+        } catch (error: any) {
+          message.error(error.message || 'Failed to delete drill plan');
+        }
+      },
+    });
+  };
+
+  const handleStatusChange = (toStatus: DrillPlanStatusEnum) => {
+    if (plan) {
+      openStatusTransitionModal(plan.DrillPlanId, toStatus);
+    }
+  };
+
+  const handleTransitionComplete = () => {
+    refresh();
+    loadStatusHistory();
+  };
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: '24px', textAlign: 'center' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: '24px' }}>
+        <Alert
+          message="Error"
+          description={error}
+          type="error"
+          showIcon
+        />
+      </div>
+    );
+  }
+
+  if (!plan) {
+    return (
+      <div style={{ padding: '24px' }}>
+        <Alert
+          message="Not Found"
+          description="Drill plan not found"
+          type="warning"
+          showIcon
+        />
+      </div>
+    );
+  }
+
+  const availableTransitions = getAvailableTransitions(plan);
+  const transitionMenuItems = availableTransitions.map(status => ({
+    key: status,
+    label: status,
+    onClick: () => handleStatusChange(status),
+  }));
+
+  const exportMenuItems: MenuProps['items'] = [
+    {
+      key: 'print',
+      label: 'Print',
+      icon: <PrinterOutlined />,
+      onClick: printDrillPlan,
+    },
+    {
+      key: 'pdf',
+      label: 'Export to PDF',
+      icon: <FilePdfOutlined />,
+      onClick: () => exportToPDF(plan.DrillPlanId, plan.PlannedHoleNm || ''),
+    },
+  ];
+
+  return (
+    <div style={{ padding: '24px' }}>
+      {/* Print Header - Only visible when printing */}
+      <div className="print-only print-header">
+        <div className="print-company-name">B2Gold Corporation</div>
+        <div className="print-document-title">Drill Plan Report</div>
+        <div className="print-metadata">
+          Printed: {new Date().toLocaleString()} | Plan ID: {plan.DrillPlanId}
+        </div>
+      </div>
+
+      {/* Header */}
+      <div style={{ marginBottom: '24px' }} className="no-print">
+        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Space>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate('/drill-plan')}
+            >
+              Back to List
+            </Button>
+            <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
+              {plan.PlannedHoleNm || 'Drill Plan Details'}
+            </h1>
+          </Space>
+
+          <Space className="no-print">
+            <Dropdown menu={{ items: exportMenuItems }} placement="bottomRight">
+              <Button icon={<MoreOutlined />}>
+                More Actions
+              </Button>
+            </Dropdown>
+
+            {canUpdate() && (
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => navigate(`/drill-plan/${id}/edit`)}
+              >
+                Edit
+              </Button>
+            )}
+
+            {availableTransitions.length > 0 && (
+              <Dropdown
+                menu={{ items: transitionMenuItems }}
+                placement="bottomRight"
+              >
+                <Button type="primary" icon={<SwapOutlined />}>
+                  Change Status
+                </Button>
+              </Dropdown>
+            )}
+
+            {canDelete(plan) && (
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={handleDelete}
+              >
+                Delete
+              </Button>
+            )}
+          </Space>
+        </Space>
+      </div>
+
+      {/* Status */}
+      <Card style={{ marginBottom: '16px' }}>
+        <Space>
+          <span style={{ fontWeight: 600 }}>Status:</span>
+          <StatusChip status={plan.DrillPlanStatus} size="medium" />
+        </Space>
+      </Card>
+
+      {/* Basic Information */}
+      <Card title="Basic Information" style={{ marginBottom: '16px' }}>
+        <Descriptions column={2} bordered>
+          <Descriptions.Item label="Project">{plan.Project || 'N/A'}</Descriptions.Item>
+          <Descriptions.Item label="Organization">{plan.Organization || 'N/A'}</Descriptions.Item>
+          <Descriptions.Item label="Target">{plan.Target || 'N/A'}</Descriptions.Item>
+          <Descriptions.Item label="Sub Target">{plan.SubTarget || 'N/A'}</Descriptions.Item>
+          <Descriptions.Item label="Prospect">{plan.Prospect || 'N/A'}</Descriptions.Item>
+          <Descriptions.Item label="Tenement">{plan.Tenement || 'N/A'}</Descriptions.Item>
+          <Descriptions.Item label="Hole Type">{plan.HoleType || 'N/A'}</Descriptions.Item>
+          <Descriptions.Item label="Hole Purpose">{plan.HolePurpose || 'N/A'}</Descriptions.Item>
+          <Descriptions.Item label="Drill Type">{plan.DrillType || 'N/A'}</Descriptions.Item>
+          <Descriptions.Item label="Data Source">{plan.DataSource || 'N/A'}</Descriptions.Item>
+        </Descriptions>
+      </Card>
+
+      {/* Location & Geometry */}
+      <Card title="Location & Geometry" style={{ marginBottom: '16px' }}>
+        <Descriptions column={2} bordered>
+          <Descriptions.Item label="Easting">
+            {plan.PlannedEasting ? `${plan.PlannedEasting.toFixed(2)} m` : 'N/A'}
+          </Descriptions.Item>
+          <Descriptions.Item label="Northing">
+            {plan.PlannedNorthing ? `${plan.PlannedNorthing.toFixed(2)} m` : 'N/A'}
+          </Descriptions.Item>
+          <Descriptions.Item label="RL">
+            {plan.PlannedRL ? `${plan.PlannedRL.toFixed(2)} m` : 'N/A'}
+          </Descriptions.Item>
+          <Descriptions.Item label="Total Depth">
+            {plan.PlannedTotalDepth ? `${plan.PlannedTotalDepth.toFixed(2)} m` : 'N/A'}
+          </Descriptions.Item>
+          <Descriptions.Item label="Dip">
+            {plan.PlannedDip ? `${plan.PlannedDip.toFixed(1)}°` : 'N/A'}
+          </Descriptions.Item>
+          <Descriptions.Item label="Azimuth">
+            {plan.PlannedAzimuth ? `${plan.PlannedAzimuth.toFixed(1)}°` : 'N/A'}
+          </Descriptions.Item>
+        </Descriptions>
+      </Card>
+
+      {/* Schedule */}
+      <Card title="Schedule" style={{ marginBottom: '16px' }}>
+        <Descriptions column={2} bordered>
+          <Descriptions.Item label="Planned Start">
+            {plan.PlannedStartDt ? new Date(plan.PlannedStartDt).toLocaleDateString() : 'N/A'}
+          </Descriptions.Item>
+          <Descriptions.Item label="Planned Complete">
+            {plan.PlannedCompleteDt ? new Date(plan.PlannedCompleteDt).toLocaleDateString() : 'N/A'}
+          </Descriptions.Item>
+          <Descriptions.Item label="Planned By">{plan.PlannedBy || 'N/A'}</Descriptions.Item>
+          <Descriptions.Item label="Priority">{plan.DrillPriority || 'N/A'}</Descriptions.Item>
+        </Descriptions>
+      </Card>
+
+      {/* Audit Information */}
+      <Card title="Audit Information" style={{ marginBottom: '16px' }}>
+        <Descriptions column={2} bordered>
+          <Descriptions.Item label="Created On">
+            {plan.CreatedOnDt ? new Date(plan.CreatedOnDt).toLocaleString() : 'N/A'}
+          </Descriptions.Item>
+          <Descriptions.Item label="Created By">{plan.CreatedBy || 'N/A'}</Descriptions.Item>
+          <Descriptions.Item label="Modified On">
+            {plan.ModifiedOnDt ? new Date(plan.ModifiedOnDt).toLocaleString() : 'N/A'}
+          </Descriptions.Item>
+          <Descriptions.Item label="Modified By">{plan.ModifiedBy || 'N/A'}</Descriptions.Item>
+        </Descriptions>
+      </Card>
+
+      {/* Status History */}
+      <StatusHistoryTimeline history={statusHistory} loading={loadingHistory} />
+
+      {/* Status Transition Modal */}
+      {statusTransitionModal.visible && statusTransitionModal.planId && statusTransitionModal.toStatus && (
+        <StatusTransitionModal
+          visible={statusTransitionModal.visible}
+          plan={plan}
+          toStatus={statusTransitionModal.toStatus}
+          onComplete={handleTransitionComplete}
+          onCancel={closeStatusTransitionModal}
+        />
+      )}
+    </div>
+  );
+};

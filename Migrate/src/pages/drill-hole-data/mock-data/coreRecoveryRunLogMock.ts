@@ -1,0 +1,68 @@
+/**
+ * CoreRecoveryRunLog Mock Data Generator
+ */
+
+export function generateCoreRecoveryRunLogMock() {
+	return [
+		{
+			id: "crr-001",
+			CoreRecoveryRunLogId: "mock-crr-001",
+			CollarId: "mock-collar-001",
+			DepthFrom: 0.00,
+			DepthTo: 6.00,
+			Run: 1,
+			CoreDiameter: "HQ",
+			DrillLength: 6.00,
+			CoreRecovered: 5.85,
+			RecoveryPercent: 97.5,
+			Comments: "Excellent recovery in overburden",
+			RowStatus: 0,
+			ActiveInd: true,
+		},
+		{
+			id: "crr-002",
+			CoreRecoveryRunLogId: "mock-crr-002",
+			CollarId: "mock-collar-001",
+			DepthFrom: 6.00,
+			DepthTo: 12.00,
+			Run: 2,
+			CoreDiameter: "HQ",
+			DrillLength: 6.00,
+			CoreRecovered: 5.70,
+			RecoveryPercent: 95.0,
+			Comments: "Good recovery",
+			RowStatus: 0,
+			ActiveInd: true,
+		},
+		{
+			id: "crr-003",
+			CoreRecoveryRunLogId: "mock-crr-003",
+			CollarId: "mock-collar-001",
+			DepthFrom: 12.00,
+			DepthTo: 18.00,
+			Run: 3,
+			CoreDiameter: "HQ",
+			DrillLength: 6.00,
+			CoreRecovered: 4.20,
+			RecoveryPercent: 70.0,
+			Comments: "Poor recovery in fractured zone",
+			RowStatus: 0,
+			ActiveInd: true,
+		},
+		{
+			id: "crr-004",
+			CoreRecoveryRunLogId: "mock-crr-004",
+			CollarId: "mock-collar-001",
+			DepthFrom: 18.00,
+			DepthTo: 24.00,
+			Run: 4,
+			CoreDiameter: "HQ",
+			DrillLength: 6.00,
+			CoreRecovered: 5.90,
+			RecoveryPercent: 98.3,
+			Comments: "Excellent recovery in competent rock",
+			RowStatus: 0,
+			ActiveInd: true,
+		},
+	];
+}

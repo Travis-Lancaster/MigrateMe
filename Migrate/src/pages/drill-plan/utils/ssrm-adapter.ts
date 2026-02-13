@@ -1,0 +1,216 @@
+/**
+ * SSRM Adapter for Drill Plans
+ *
+ * Adapts AG Grid SSRM requests to backend API format
+ * Handles mapping of sort models, filter models, and pagination
+ */
+
+import type { DrillPlan } from "#src/api/database/data-contracts";
+import type {
+	SSRMRequestWithExternal,
+	SSRMResponse,
+} from "#src/pages/_shared/types/ssrm-types";
+import apiClient from "#src/services/apiClient";
+
+/**
+ * Convert SSRM sort model to API format
+ *
+ * @param sortModel - AG Grid sort model
+ * @returns JSON string of sort configuration
+ */
+function mapSortModel(sortModel: { colId: string, sort: "asc" | "desc" }[]): string {
+	if (!sortModel || sortModel.length === 0) {
+		return "[]";
+	}
+
+	const sorts = sortModel.map(sort => ({
+		field: sort.colId,
+		direction: sort.sort.toUpperCase(), // 'ASC' or 'DESC'
+	}));
+
+	return JSON.stringify(sorts);
+}
+
+/**
+ * Map AG Grid filter types to backend operators
+ */
+function mapFilterOperator(agGridType: string): string {
+	const operatorMap: Record<string, string> = {
+		equals: "eq",
+		notEqual: "neq",
+		contains: "like",
+		notContains: "nlike",
+		startsWith: "sw",
+		endsWith: "ew",
+		lessThan: "lt",
+		lessThanOrEqual: "lte",
+		greaterThan: "gt",
+		greaterThanOrEqual: "gte",
+		in: "in",
+		inRange: "between",
+	};
+
+	return operatorMap[agGridType] || "eq";
+}
+
+/**
+ * Convert SSRM filter model to API format
+ *
+ * @param filterModel - AG Grid filter model
+ * @returns JSON string of filter configuration
+ */
+function mapFilterModel(filterModel: Record<string, any>): string {
+	if (!filterModel || Object.keys(filterModel).length === 0) {
+		return JSON.stringify({ filters: [] });
+	}
+
+	const filters = Object.entries(filterModel).map(([field, filter]) => {
+		// Handle different filter types
+		let operator = "eq";
+		let value = filter.filter || filter.value;
+
+		if (filter.type) {
+			operator = mapFilterOperator(filter.type);
+		}
+
+		// Handle combined filters (multiple conditions with AND/OR)
+		if (filter.operator && filter.conditions) {
+			// For now, just use the first condition
+			// TODO: Support complex AND/OR conditions
+			const firstCondition = filter.conditions[0];
+			operator = mapFilterOperator(firstCondition.type);
+			value = firstCondition.filter || firstCondition.value;
+		}
+
+		return {
+			field,
+			op: operator,
+			value,
+		};
+	});
+
+	// Wrap in filters object as expected by backend
+	return JSON.stringify({ filters });
+}
+
+/**
+ * Fetch drill plans with SSRM parameters
+ *
+ * Maps SSRM request to backend API call and returns paginated response
+ *
+ * @param request - SSRM request with external filters
+ * @returns Paginated drill plans response
+ */
+export async function fetchDrillPlansSSRM(
+	request: SSRMRequestWithExternal,
+): Promise<SSRMResponse<DrillPlan>> {
+	// Calculate page number from startRow/endRow
+	const pageSize = request.endRow - request.startRow;
+	const page = Math.floor(request.startRow / pageSize) + 1;
+
+	console.log("[Drill Plan SSRM Adapter] Fetching data:", {
+		page,
+		pageSize,
+		search: request.quickFilterText,
+		statusFilters: request.statusFilters,
+		sorts: request.sortModel,
+		filters: request.filterModel,
+	});
+
+	// Build API query parameters
+	const queryParams: any = {
+		page,
+		take: pageSize,
+	};
+
+	// Add search if provided
+	if (request.quickFilterText) {
+		queryParams.search = request.quickFilterText;
+	}
+
+	// Add sorting if provided
+	if (request.sortModel && request.sortModel.length > 0) {
+		queryParams.sorts = mapSortModel(request.sortModel);
+	}
+
+	// Build filters array combining column filters and status filters
+	const allFilters: any[] = [];
+
+	// Add column filters if provided
+	if (request.filterModel && Object.keys(request.filterModel).length > 0) {
+		const filterModelStr = mapFilterModel(request.filterModel);
+		const parsed = JSON.parse(filterModelStr);
+		allFilters.push(...parsed.filters);
+	}
+
+	// Add status filters from chips if provided
+	if (request.statusFilters && request.statusFilters.length > 0) {
+		allFilters.push({
+			field: "DrillPlanStatus",
+			op: "in",
+			value: request.statusFilters,
+		});
+	}
+
+	// Set filters parameter with proper format
+	if (allFilters.length > 0) {
+		queryParams.filters = JSON.stringify({ filters: allFilters });
+	}
+
+	// Call API
+	const response = await apiClient.drillPlanControllerFindAll(queryParams);
+
+	// Extract data and metadata from response
+	// Handle different response formats
+	const responseData = response.data as any;
+	const data = responseData?.data || response.data || [];
+	const meta = responseData?.meta;
+
+	// Parse total count from metadata or use data length
+	const totalCount = meta?.itemCount || meta?.totalCount || data.length;
+
+	console.log("[Drill Plan SSRM Adapter] Response received:", {
+		dataLength: Array.isArray(data) ? data.length : 0,
+		totalCount,
+		page: meta?.page || page,
+		take: meta?.take || pageSize,
+	});
+
+	return {
+		data: Array.isArray(data) ? data : [],
+		totalCount,
+		page: meta?.page || page,
+		take: meta?.take || pageSize,
+	};
+}
+
+/**
+ * Fallback: Fetch all drill plans for offline mode
+ *
+ * Loads all data at once for client-side operations
+ *
+ * @returns Array of all drill plans
+ */
+export async function fetchAllDrillPlansLocal(): Promise<DrillPlan[]> {
+	console.log("[Drill Plan SSRM Adapter] Fetching all data for local fallback...");
+
+	try {
+		const response = await apiClient.drillPlanControllerFindAll({
+			page: 1,
+			take: 100000, // Large number to get all records
+		});
+
+		const responseData = response.data as any;
+		const data = responseData?.data || response.data || [];
+
+		console.log("[Drill Plan SSRM Adapter] Local fallback data loaded:", {
+			count: Array.isArray(data) ? data.length : 0,
+		});
+
+		return Array.isArray(data) ? data : [];
+	}
+	catch (error) {
+		console.error("[Drill Plan SSRM Adapter] Failed to fetch local fallback data:", error);
+		throw error;
+	}
+}

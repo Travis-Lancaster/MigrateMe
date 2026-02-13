@@ -1,0 +1,135 @@
+/**
+ * UX Collar Types with Dual Naming Support
+ * Type adapter layer between API (numeric enums) and UX (string enums)
+ *
+ * Problem: API uses numeric RowStatus (0|1|2|3|4), UX uses strings ('Draft'|'Complete'|etc.)
+ * Solution: Create VwCollar type that adapts API types for UX consumption
+ *
+ * Dual Naming System:
+ * - PlannedHoleNm: Assigned during planning phase (from DrillPlan)
+ * - HoleId/HoleNm: Actual identifier assigned when drilling starts
+ */
+
+import { Collar as ApiCollar, VwCollar } from '#src/data/api/database/data-contracts.js';
+import { RowStatus } from '../constants/row-status.js';
+
+/**
+ * Extended Collar type for UX layer with dual naming
+ * - Overrides RowStatus to use string enum instead of numeric
+ * - Adds dual naming fields (planned vs actual identifiers)
+ * - Adds progress tracking fields
+ * - Maintains all other API Collar properties
+ */
+// export interface VwCollar extends Omit<ApiCollar, 'RowStatus' | 'HoleId'> {
+// 	// Override with string-based status for UX
+// 	RowStatus?: RowStatus | string;
+
+// 	// EXECUTION IDENTIFIERS
+// 	HoleId?: string;              // ACTUAL hole identifier assigned during drilling
+// 	HoleNm?: string;              // Alternative actual name
+
+// 	// Link back to planning (for dual naming display)
+// 	DrillPlanId?: string;         // FK to DrillPlan
+// 	PlannedHoleNm?: string;       // Denormalized from DrillPlan for easy display
+// 	ProposedHoleNm?: string;      // Denormalized from DrillPlan
+
+// 	// Progress tracking
+// 	TotalDepth?: number;        // Current drilling depth (for in-progress holes)
+// 	MaxDepth_m?: number;          // Total depth (maps to TotalDepth from API)
+
+// 	// Section completion status (computed from section data)
+// 	setupComplete?: boolean;
+// 	geologyComplete?: boolean;
+// 	geotechComplete?: boolean;
+// 	samplingComplete?: boolean;
+// 	qaqcComplete?: boolean;
+// }
+
+/**
+ * Map API numeric RowStatus to UX string RowStatus
+ *
+ * API Values:
+ * - 0 = Draft
+ * - 1 = Complete
+ * - 2 = Reviewed
+ * - 3 = Approved
+ * - 4 = Rejected (map to Draft for editing)
+ *
+ * @param apiStatus - Numeric status from API (0-4)
+ * @returns String-based RowStatus for UX
+ */
+export function mapApiToUxRowStatus(apiStatus?: number): RowStatus | undefined {
+	if (apiStatus === undefined) return undefined;
+
+	const mapping: Record<number, RowStatus> = {
+		0: RowStatus.Draft,
+		1: RowStatus.Complete,
+		2: RowStatus.Reviewed,
+		3: RowStatus.Approved,
+		4: RowStatus.Draft, // Rejected → Draft (editable again)
+	};
+
+	return mapping[apiStatus];
+}
+
+/**
+ * Map UX string RowStatus to API numeric RowStatus
+ *
+ * Used when submitting data back to API
+ *
+ * @param uxStatus - String-based RowStatus from UX
+ * @returns Numeric status for API (0-4)
+ */
+export function mapUxToApiRowStatus(uxStatus?: RowStatus | string): number | undefined {
+	if (!uxStatus) return undefined;
+
+	const mapping: Record<string, number> = {
+		'Draft': 0,
+		'Complete': 1,
+		'Reviewed': 2,
+		'Approved': 3,
+	};
+
+	return mapping[uxStatus];
+}
+
+/**
+ * Convert API Collar to UX Collar
+ *
+ * Performs all necessary transformations:
+ * - Maps numeric RowStatus to string
+ * - Adds denormalized properties if available
+ * - Preserves all other API properties
+ *
+ * @param apiCollar - Collar from API with numeric RowStatus
+ * @returns VwCollar with string RowStatus and added properties
+ */
+export function toVwCollar(apiCollar: Partial<ApiCollar>): Partial<VwCollar> {
+	return {
+		...apiCollar,
+		RowStatus: mapApiToUxRowStatus(apiCollar.RowStatus as number),
+		// Map TotalDepth to MaxDepth_m if needed
+		MaxDepth_m: apiCollar.TotalDepth,
+		// HoleId should come from backend join or be added by caller
+	};
+}
+
+/**
+ * Convert UX Collar to API Collar
+ *
+ * Used when submitting updated collar data back to API
+ *
+ * @param uxCollar - Collar from UX with string RowStatus
+ * @returns API Collar with numeric RowStatus
+ */
+export function toApiCollar(uxCollar: Partial<VwCollar>): Partial<ApiCollar> {
+	const { HoleId, MaxDepth_m, ...apiProps } = uxCollar;
+
+	return {
+		...apiProps,
+		RowStatus: mapUxToApiRowStatus(uxCollar.RowStatus) as any,
+		TotalDepth: MaxDepth_m, // Map back if needed
+	};
+}
+
+console.log('[CONFIG] UX Collar type adapters loaded');

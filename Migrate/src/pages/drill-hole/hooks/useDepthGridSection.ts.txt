@@ -1,0 +1,282 @@
+/**
+ * useDepthGridSection Hook
+ *
+ * High-level composite hook that combines all depth-based grid patterns.
+ * Provides everything needed for a standard depth interval grid section.
+ *
+ * Includes:
+ * - Data management (useGridSection)
+ * - Auto-add phantom row (useAutoAddRow)
+ * - Dirty row tracking (useRowDirtyState)
+ * - Default sorting by DepthFrom
+ * - Context menu setup
+ * - Row styling
+ *
+ * @example
+ * ```typescript
+ * const {
+ *   gridData,
+ *   columnDefs,
+ *   gridProps,
+ *   contextMenu,
+ *   rowClassRules,
+ *   handlers
+ * } = useDepthGridSection({
+ *   sectionKey: SectionKey.DrillMethod,
+ *   createEmptyRow: (depthFrom, context) => ({
+ *     ...createEmptyDrillMethodData(),
+ *     DepthFrom: depthFrom,
+ *     CollarId: context.drillHoleId,
+ *   }),
+ *   getRowId: (row) => row.DrillMethodId,
+ * });
+ *
+ * <AgGridReact
+ *   rowData={gridData}
+ *   rowClassRules={rowClassRules}
+ *   getContextMenuItems={contextMenu}
+ *   {...gridProps}
+ * />
+ * ```
+ */
+
+import { useCallback, useMemo } from 'react';
+import type { SectionKey } from '#src/types/drillhole';
+import type { DrillHoleContext } from './useGridSection';
+import { useGridSection } from './useGridSection';
+import { useAutoAddRow } from './useAutoAddRow';
+import { useRowDirtyState, useCombinedRowClassRules } from './useRowDirtyState';
+import { createContextMenu, type ContextMenuConfig } from '../utils/grid-context-menu';
+
+export interface UseDepthGridSectionConfig<T> {
+	/** Section key for data management */
+	sectionKey: SectionKey;
+
+	/**
+	 * Function to create an empty row with proper defaults
+	 * @param depthFrom - Starting depth for the new row
+	 * @param context - Current DrillHole context
+	 */
+	createEmptyRow: (depthFrom: number, context: DrillHoleContext) => T;
+
+	/**
+	 * Function to extract row ID from row data
+	 * @param row - Row data
+	 * @returns Row ID or undefined for phantom rows
+	 */
+	getRowId: (row: T) => string | undefined;
+
+	/**
+	 * Enable auto-add phantom row pattern
+	 * @default true
+	 */
+	enableAutoAddRow?: boolean;
+
+	/**
+	 * Context menu configuration
+	 * @default { allowInsert: true, allowDelete: true }
+	 */
+	contextMenuConfig?: ContextMenuConfig;
+
+	/**
+	 * Field name for DepthTo (default: 'DepthTo')
+	 */
+	depthToField?: keyof T;
+
+	/**
+	 * Field name for DepthFrom (default: 'DepthFrom')
+	 */
+	depthFromField?: keyof T;
+
+	/**
+	 * Function to check if row is deleted (default: checks ActiveInd)
+	 */
+	isDeletedRow?: (row: T) => boolean;
+
+	/**
+	 * Custom row class rules
+	 */
+	customRowClassRules?: Record<string, (params: { data: T | undefined }) => boolean>;
+}
+
+export interface UseDepthGridSectionReturn<T> {
+	/** Grid data with phantom row (if enabled) */
+	gridData: T[];
+
+	/** Section metadata from store */
+	section: any;
+
+	/** AG Grid props (spread onto AgGridReact) */
+	gridProps: any;
+
+	/** Context menu function */
+	contextMenu: (params: any) => any[];
+
+	/** Row class rules for styling */
+	rowClassRules: Record<string, (params: any) => boolean>;
+
+	/** Event handlers */
+	handlers: {
+		onAddRow: () => void;
+		onDeleteRows: () => void;
+		onInsertRow: (index: number) => void;
+		onCellValueChanged?: (event: any) => void;
+	};
+
+	/** Utility functions */
+	utils: {
+		isDirtyRow: (row: T) => boolean;
+		isPhantomRow: (row: T) => boolean;
+		getDrillHoleContext: () => DrillHoleContext;
+	};
+}
+
+/**
+ * Composite hook for depth-based grid sections
+ */
+export function useDepthGridSection<T>(
+	config: UseDepthGridSectionConfig<T>
+): UseDepthGridSectionReturn<T> {
+	const {
+		sectionKey,
+		createEmptyRow,
+		getRowId,
+		enableAutoAddRow = true,
+		contextMenuConfig = {},
+		depthToField = 'DepthTo' as keyof T,
+		depthFromField = 'DepthFrom' as keyof T,
+		isDeletedRow = (row: T) => (row as any).ActiveInd === false,
+		customRowClassRules = {},
+	} = config;
+
+	// Base grid section hook with default sort by DepthFrom
+	const {
+		gridData: baseGridData,
+		section,
+		gridProps: baseGridProps,
+		updateGridData,
+		getDrillHoleContext,
+	} = useGridSection<T>(sectionKey, {
+		defaultSort: { field: depthFromField as string, direction: 'asc' },
+	});
+
+	// Auto-add phantom row pattern (optional)
+	const autoAddRow = useAutoAddRow<T>(
+		baseGridData,
+		updateGridData,
+		{
+			createEmptyRow,
+			depthToField,
+			depthFromField,
+			getRowId,
+			getDrillHoleContext,
+		}
+	);
+
+	// Use enhanced or base data depending on configuration
+	const gridData = enableAutoAddRow ? autoAddRow.enhancedRowData : baseGridData;
+
+	// Dirty row tracking
+	const { isDirtyRow, dirtyRowIds } = useRowDirtyState<T>(sectionKey, getRowId);
+
+	// Combined row class rules
+	const rowClassRules = useCombinedRowClassRules<T>({
+		isDirtyRow,
+		isPhantomRow: enableAutoAddRow ? autoAddRow.isPhantomRow : undefined,
+		isDeletedRow,
+		customRules: customRowClassRules,
+	});
+
+	// Handler: Add new row at end
+	const onAddRow = useCallback(() => {
+		const context = getDrillHoleContext();
+		const lastRow = baseGridData[baseGridData.length - 1];
+		const lastDepthTo = lastRow ? (lastRow[depthToField] as number) : 0;
+		const depthFrom = typeof lastDepthTo === 'number' ? lastDepthTo : 0;
+
+		const newRow = createEmptyRow(depthFrom, context);
+		updateGridData((prev) => [...prev, newRow]);
+
+		console.log(`➕ [${sectionKey}] Added new row at end`);
+	}, [baseGridData, depthToField, createEmptyRow, getDrillHoleContext, updateGridData, sectionKey]);
+
+	// Handler: Insert row at specific index
+	const onInsertRow = useCallback(
+		(index: number) => {
+			const context = getDrillHoleContext();
+			const prevRow = index > 0 ? baseGridData[index - 1] : null;
+			const depthFrom = prevRow ? (prevRow[depthToField] as number) : 0;
+
+			const newRow = createEmptyRow(depthFrom, context);
+			updateGridData((prev) => {
+				const newData = [...prev];
+				newData.splice(index, 0, newRow);
+				return newData;
+			});
+
+			console.log(`➕ [${sectionKey}] Inserted row at index ${index}`);
+		},
+		[baseGridData, depthToField, createEmptyRow, getDrillHoleContext, updateGridData, sectionKey]
+	);
+
+	// Handler: Delete selected rows (soft delete)
+	const onDeleteRows = useCallback(() => {
+		updateGridData((prev) =>
+			prev.map((row) => {
+				const rowId = getRowId(row);
+				// Mark as deleted (soft delete)
+				return { ...row, ActiveInd: false } as T;
+			})
+		);
+
+		console.log(`🗑️ [${sectionKey}] Deleted rows`);
+	}, [updateGridData, getRowId, sectionKey]);
+
+	// Context menu with handlers
+	const isReadOnly = !section.isEditable();
+	const contextMenu = useMemo(
+		() =>
+			createContextMenu<T>(
+				{
+					allowInsert: !isReadOnly,
+					allowDelete: !isReadOnly,
+					...contextMenuConfig,
+				},
+				{
+					onInsertRow,
+					onDeleteRows,
+				}
+			),
+		[isReadOnly, contextMenuConfig, onInsertRow, onDeleteRows]
+	);
+
+	// Combine grid props
+	const gridProps = useMemo(
+		() => ({
+			...baseGridProps,
+			...(enableAutoAddRow && {
+				onCellValueChanged: autoAddRow.onCellValueChanged,
+			}),
+		}),
+		[baseGridProps, enableAutoAddRow, autoAddRow]
+	);
+
+	return {
+		gridData,
+		section,
+		gridProps,
+		contextMenu,
+		rowClassRules,
+		handlers: {
+			onAddRow,
+			onDeleteRows,
+			onInsertRow,
+			onCellValueChanged: enableAutoAddRow ? autoAddRow.onCellValueChanged : undefined,
+		},
+		utils: {
+			isDirtyRow,
+			isPhantomRow: enableAutoAddRow ? autoAddRow.isPhantomRow : () => false,
+			getDrillHoleContext,
+		},
+	};
+}

@@ -1,0 +1,460 @@
+/**
+ * DrillPlanFormView Component
+ *
+ * Form for creating and editing drill plans
+ * Enhanced with optional pattern selection
+ */
+
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Form,
+  Input,
+  InputNumber,
+  Row,
+  Space,
+  Spin,
+  Tag,
+  message,
+} from 'antd';
+import { ArrowLeftOutlined, CheckCircleOutlined, SaveOutlined } from '@ant-design/icons';
+import type { CreateDrillPlanDto, UpdateDrillPlanDto } from '../types';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router';
+
+import type { DrillPattern } from '#src/api/database/data-contracts';
+import { PatternSelector } from '../components/PatternSelector';
+import { apiClient } from '#src/services/apiClient';
+import dayjs from 'dayjs';
+import { patternIntegrationService } from '../services/patternIntegrationService';
+import { useDrillPlanDetail } from '../hooks/useDrillPlanDetail';
+import { useDrillPlanStore } from '../store/drill-plan-store';
+
+export const DrillPlanFormView: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [form] = Form.useForm();
+  const isEdit = id && id !== 'new';
+
+  const { plan, isLoading, error } = useDrillPlanDetail(isEdit ? id : '');
+  const { createPlan, updatePlan, isSaving} = useDrillPlanStore();
+
+  // Pattern selection state
+  const [selectedPattern, setSelectedPattern] = useState<DrillPattern | null>(null);
+  const [patternFields, setPatternFields] = useState<string[]>([]);
+
+  // Load pattern from navigation state (from QuickCreateButton)
+  useEffect(() => {
+    const loadPatternFromState = async () => {
+      const state = location.state as { patternId?: string } | null;
+      if (state?.patternId && !isEdit) {
+        try {
+          const pattern = await apiClient.drillPatternControllerFindOne(state.patternId)
+          handlePatternSelect(pattern.data.DrillPatternId, pattern.data);
+        } catch (error) {
+          console.error('[DrillPlanFormView] Failed to load pattern:', error);
+          message.warning('Failed to load pattern from Quick Create');
+        }
+      }
+    };
+
+    loadPatternFromState();
+  }, [location.state, isEdit]);
+
+  useEffect(() => {
+    if (isEdit && plan) {
+      // Populate form with existing plan data
+      form.setFieldsValue({
+        ...plan,
+        PlannedStartDt: plan.PlannedStartDt ? dayjs(plan.PlannedStartDt) : undefined,
+        PlannedCompleteDt: plan.PlannedCompleteDt ? dayjs(plan.PlannedCompleteDt) : undefined,
+      });
+    }
+  }, [plan, isEdit]);
+
+  // Handle pattern selection
+  const handlePatternSelect = (patternId: string | undefined, pattern: DrillPattern | undefined) => {
+    if (!pattern) {
+      setSelectedPattern(null);
+      setPatternFields([]);
+      return;
+    }
+
+    setSelectedPattern(pattern);
+
+    // Apply pattern to form
+    const currentValues = form.getFieldsValue();
+    const patternData = patternIntegrationService.applyPatternToPlan(pattern, currentValues);
+
+    // Track which fields came from pattern
+    setPatternFields(patternData._patternFields || []);
+
+    // Set form values
+    form.setFieldsValue(patternData);
+
+    // Save as last used pattern
+    patternIntegrationService.setLastUsedPattern(pattern.DrillPatternId);
+
+    message.info('Pattern fields applied. You can modify any field as needed.');
+  };
+
+  const handleSubmit = async (values: any) => {
+    try {
+      // Clean pattern metadata before submission
+      const cleanedData = patternIntegrationService.cleanFormData(values);
+
+      const formData = {
+        ...cleanedData,
+        PlannedStartDt: values.PlannedStartDt?.toISOString(),
+        PlannedCompleteDt: values.PlannedCompleteDt?.toISOString(),
+      };
+
+      if (isEdit) {
+        await updatePlan(id, formData as UpdateDrillPlanDto);
+        message.success('Drill plan updated successfully');
+        navigate(`/drill-plan/${id}`);
+      } else {
+        const newPlan = await createPlan(formData as CreateDrillPlanDto);
+        message.success('Drill plan created successfully');
+        navigate(`/drill-plan/${newPlan.DrillPlanId}`);
+      }
+    } catch (error: any) {
+      message.error(error.message || 'Failed to save drill plan');
+    }
+  };
+
+  if (isEdit && isLoading) {
+    return (
+      <div style={{ padding: '24px', textAlign: 'center' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  if (isEdit && error) {
+    return (
+      <div style={{ padding: '24px' }}>
+        <Alert message="Error" description={error} type="error" showIcon />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '24px' }}>
+      {/* Header */}
+      <div style={{ marginBottom: '24px' }}>
+        <Space>
+          <Button
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(isEdit ? `/drill-plan/${id}` : '/drill-plan')}
+          >
+            Back
+          </Button>
+          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 600 }}>
+            {isEdit ? 'Edit Drill Plan' : 'Create Drill Plan'}
+          </h1>
+        </Space>
+      </div>
+
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={handleSubmit}
+        initialValues={{
+          DrillPriority: 5,
+          DataSource: 'Manual Entry',
+        }}
+      >
+        {/* Pattern Selection (Optional) - Only show when creating new plans */}
+        {!isEdit && (
+          <Card
+            title="Pattern Selection (Optional)"
+            style={{ marginBottom: '16px', backgroundColor: '#f0f5ff' }}
+          >
+            <Alert
+              message="Optional: Use a drill pattern to auto-populate fields"
+              description="Select a pattern below to automatically fill in organization, target, and azimuth. All fields can be edited after selection."
+              type="info"
+              showIcon
+              style={{ marginBottom: '16px' }}
+            />
+
+            <PatternSelector
+              value={selectedPattern?.DrillPatternId}
+              onChange={handlePatternSelect}
+            />
+
+            {selectedPattern && (
+              <Alert
+                message={
+                  <Space>
+                    <CheckCircleOutlined />
+                    <span>Pattern Applied: <strong>{selectedPattern.DrillPattern}</strong></span>
+                  </Space>
+                }
+                description={
+                  <div>
+                    <p style={{ marginBottom: '8px' }}>The following fields were auto-populated:</p>
+                    <Space wrap>
+                      {patternFields.map(field => (
+                        <Tag key={field} color="blue">{field}</Tag>
+                      ))}
+                    </Space>
+                    <p style={{ marginTop: '8px', marginBottom: 0, fontStyle: 'italic' }}>
+                      You can modify any of these fields below.
+                    </p>
+                  </div>
+                }
+                type="success"
+                showIcon
+                closable
+                onClose={() => handlePatternSelect(undefined, undefined)}
+                style={{ marginTop: '16px' }}
+              />
+            )}
+          </Card>
+        )}
+
+        {/* Basic Information */}
+        <Card title="Basic Information" style={{ marginBottom: '16px' }}>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="Organization"
+                name="Organization"
+                rules={[{ required: true, message: 'Organization is required' }]}
+              >
+                <Input placeholder="Enter organization" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="Project"
+                name="Project"
+                rules={[{ required: true, message: 'Project is required' }]}
+              >
+                <Input placeholder="Enter project" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="Target"
+                name="Target"
+                rules={[{ required: true, message: 'Target is required' }]}
+              >
+                <Input placeholder="Enter target" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="Sub Target" name="SubTarget">
+                <Input placeholder="Enter sub target" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item label="Prospect" name="Prospect">
+                <Input placeholder="Enter prospect" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="Tenement" name="Tenement">
+                <Input placeholder="Enter tenement" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item label="Hole Type" name="HoleType">
+                <Input placeholder="e.g., RC, Diamond" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item label="Hole Purpose" name="HolePurpose">
+                <Input placeholder="e.g., Exploration, Resource" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item label="Drill Type" name="DrillType">
+                <Input placeholder="e.g., Surface, Underground" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="Data Source"
+                name="DataSource"
+                rules={[{ required: true, message: 'Data source is required' }]}
+              >
+                <Input placeholder="Enter data source" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="Planned Hole Name" name="PlannedHoleNm">
+                <Input placeholder="Enter planned hole name" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* Location & Geometry */}
+        <Card title="Location & Geometry" style={{ marginBottom: '16px' }}>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item
+                label="Easting (m)"
+                name="PlannedEasting"
+                rules={[{ required: true, message: 'Easting is required' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  placeholder="Enter easting"
+                  precision={2}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label="Northing (m)"
+                name="PlannedNorthing"
+                rules={[{ required: true, message: 'Northing is required' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  placeholder="Enter northing"
+                  precision={2}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item label="RL (m)" name="PlannedRL">
+                <InputNumber
+                  style={{ width: '100%' }}
+                  placeholder="Enter RL"
+                  precision={2}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item
+                label="Total Depth (m)"
+                name="PlannedTotalDepth"
+                rules={[
+                  { required: true, message: 'Total depth is required' },
+                  { type: 'number', min: 0, message: 'Depth must be positive' },
+                ]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  placeholder="Enter total depth"
+                  precision={2}
+                  min={0}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label="Dip (°)"
+                name="PlannedDip"
+                rules={[
+                  { type: 'number', min: -90, max: 90, message: 'Dip must be between -90 and 90' },
+                ]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  placeholder="Enter dip"
+                  precision={1}
+                  min={-90}
+                  max={90}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                label="Azimuth (°)"
+                name="PlannedAzimuth"
+                rules={[
+                  { type: 'number', min: 0, max: 360, message: 'Azimuth must be between 0 and 360' },
+                ]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  placeholder="Enter azimuth"
+                  precision={1}
+                  min={0}
+                  max={360}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* Schedule */}
+        <Card title="Schedule" style={{ marginBottom: '16px' }}>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item label="Planned Start Date" name="PlannedStartDt">
+                <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item label="Planned Complete Date" name="PlannedCompleteDt">
+                <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item label="Planned By" name="PlannedBy">
+                <Input placeholder="Enter planner name" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item
+                label="Priority"
+                name="DrillPriority"
+                rules={[
+                  { type: 'number', min: 1, max: 10, message: 'Priority must be between 1 and 10' },
+                ]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  placeholder="1-10"
+                  min={1}
+                  max={10}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        {/* Form Actions */}
+        <Card>
+          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+            <Button onClick={() => navigate(isEdit ? `/drill-plan/${id}` : '/drill-plan')}>
+              Cancel
+            </Button>
+            <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={isSaving}>
+              {isEdit ? 'Update' : 'Create'}
+            </Button>
+          </Space>
+        </Card>
+      </Form>
+    </div>
+  );
+};
